@@ -5,49 +5,66 @@ on:
 
 env:
   BUILD_TYPE: Release
+  BOOST_VERSION: 1_80_0
+  HADESMEM_DIR: hadesmem-v142-Release-Win32
 
 jobs:
   build:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
+
+    - name: Set up MSVC (x86)
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x86
 
     - name: Download hadesmem release
+      shell: pwsh
       run: |
-        Invoke-WebRequest https://github.com/namreeb/hadesmem/releases/download/v1.7.0/hadesmem-v142-Release-Win32.zip -OutFile hadesmem.zip
+        Invoke-WebRequest https://github.com/namreeb/hadesmem/releases/download/v1.7.0/${{ env.HADESMEM_DIR }}.zip -OutFile hadesmem.zip
         Expand-Archive -Path hadesmem.zip -DestinationPath .
 
-    - name: Build Boost
+    - name: Download Boost
+      shell: pwsh
       run: |
-        Invoke-WebRequest https://boostorg.jfrog.io/artifactory/main/release/1.78.0/source/boost_1_78_0.zip -OutFile boost.zip
+        Invoke-WebRequest https://archives.boost.io/release/1.80.0/source/boost_${{ env.BOOST_VERSION }}.zip -OutFile boost.zip
         Expand-Archive -Path boost.zip -DestinationPath .
-        cd boost_1_78_0
-        .\bootstrap
-        .\b2 --with-filesystem --with-program_options link=static threading=multi runtime-link=shared architecture=x86 address-model=32 stage
+
+    - name: Build Boost
+      shell: cmd
+      working-directory: boost_${{ env.BOOST_VERSION }}
+      run: |
+        pushd tools\build\src\engine
+        call build.bat vc143 || exit /b 1
+        popd
+        copy /Y tools\build\src\engine\b2.exe . || exit /b 1
+        echo using msvc : 14.3 : "%VCToolsInstallDir%bin\Hostx86\x86\cl.exe" : ^<setup^>"%VCINSTALLDIR%Auxiliary\Build\vcvarsall.bat" ; > project-config.jam
+        .\b2.exe --with-filesystem --with-program_options link=static threading=multi runtime-link=shared architecture=x86 address-model=32 variant=release stage || exit /b 1
 
     - name: Configure CMake
-      run: cmake -A Win32 -B ${{github.workspace}}/build -DBOOST_ROOT=boost_1_78_0 -DHADESMEM_ROOT=hadesmem-v142-Release-Win32 -DCMAKE_BUILD_TYPE=${{env.BUILD_TYPE}} -DCMAKE_INSTALL_PREFIX=${{github.workspace}}/artifact
+      run: cmake -A Win32 -B ${{ github.workspace }}/build -DBOOST_ROOT=${{ github.workspace }}/boost_${{ env.BOOST_VERSION }} -DBOOST_INCLUDEDIR=${{ github.workspace }}/boost_${{ env.BOOST_VERSION }} -DBOOST_LIBRARYDIR=${{ github.workspace }}/boost_${{ env.BOOST_VERSION }}/stage/lib -DHADESMEM_ROOT=${{ github.workspace }}/${{ env.HADESMEM_DIR }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/artifact
 
     - name: Build
       run: |
-        cmake --build ${{github.workspace}}/build --config ${{env.BUILD_TYPE}}
-        cmake --install ${{github.workspace}}/build
+        cmake --build ${{ github.workspace }}/build --config ${{ env.BUILD_TYPE }}
+        cmake --install ${{ github.workspace }}/build
 
     - name: Publish artifact
-      uses: actions/upload-artifact@v3
-      with:	
-        name: artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: nampower
         path: ${{ github.workspace }}/artifact/*
 
     - name: Setup release
-      working-directory: ${{env.GITHUB_WORKSPACE}}
       if: startsWith(github.ref, 'refs/tags/')
+      shell: pwsh
       run: |
-        move artifact nampower-${{ github.ref_name }}
+        Move-Item artifact nampower-${{ github.ref_name }}
         Compress-Archive nampower-${{ github.ref_name }} nampower-${{ github.ref_name }}.zip
 
-    - uses: softprops/action-gh-release@v1
+    - uses: softprops/action-gh-release@v2
       name: Upload assets to release
       if: startsWith(github.ref, 'refs/tags/')
       with:
