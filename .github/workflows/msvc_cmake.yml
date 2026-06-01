@@ -3,6 +3,9 @@ name: CMake
 on:
   push:
 
+permissions:
+  contents: write
+
 env:
   BUILD_TYPE: Release
   BOOST_VERSION: 1_80_0
