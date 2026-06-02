@@ -39,7 +39,9 @@ set (Boost_DEBUG ON)
 
 set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
-set(Boost_USE_STATIC_RUNTIME OFF)
+# We statically link the CRT (CMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded), so
+# pick the boost libs built with runtime-link=static (the -mt-s-x32- variant).
+set(Boost_USE_STATIC_RUNTIME ON)
 
 find_package(Boost REQUIRED COMPONENTS filesystem program_options)
 
